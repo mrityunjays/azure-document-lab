@@ -1,4 +1,4 @@
-name: API CI
+name: API CI and Deployment
 
 on:
   push:
@@ -31,3 +31,53 @@ jobs:
 
       - name: Run tests
         run: dotnet test DocumentLab.sln --configuration Release --no-build
+
+      - name: Publish API
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: >
+          dotnet publish src/DocumentApi/DocumentApi.csproj
+          --configuration Release
+          --no-build
+          --output ./publish
+
+      - name: Upload deployment artifact
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: document-api
+          path: ./publish
+          if-no-files-found: error
+          retention-days: 3
+
+  deploy:
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    concurrency:
+      group: document-api-deployment
+      cancel-in-progress: false
+
+    steps:
+      - name: Download deployment artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: document-api
+          path: ./publish
+
+      - name: Sign in to Azure using OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy API to App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_WEBAPP_NAME }}
+          package: ./publish
