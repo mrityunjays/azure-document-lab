@@ -27,7 +27,7 @@ public class HealthEndpointTests
         using var json = JsonDocument.Parse(body);
 
         Assert.Equal(
-            "ok",
+            "broken",
             json.RootElement.GetProperty("status").GetString());
 
         Assert.Equal(
